@@ -46,6 +46,20 @@ class LoanTest < ActiveSupport::TestCase
     assert loan.valid?
   end
 
+  test "allows first payment date to anchor the schedule before the loan start date" do
+    loan = Loan.new(
+      annuity_enabled: true,
+      initial_balance: 100000,
+      started_on: Date.new(2025, 6, 1),
+      first_payment_on: Date.new(2025, 1, 28),
+      payment_cadence: "monthly",
+      term_months: 360
+    )
+    loan.loan_rate_periods.build(starts_on: Date.new(2025, 6, 1), annual_rate: 3.65)
+
+    assert loan.valid?
+  end
+
   test "annuity original balance uses configured original principal" do
     loan = Loan.new(
       annuity_enabled: true,

@@ -138,6 +138,28 @@ class TransferMatchesControllerTest < ActionDispatch::IntegrationTest
     assert_select "option[value='#{loan_account.id}:3']", text: /period 3/
   end
 
+  test "does not select manual annuity loan payment matching by default" do
+    create_annuity_loan_account
+    payment_entry = create_transaction(amount: 1798.65, account: accounts(:depository), date: Date.new(2024, 4, 20))
+
+    get new_transaction_transfer_match_path(payment_entry)
+
+    assert_response :success
+    assert_select "select[name='transfer_match[method]'] option[value='manual_loan_payment']"
+    assert_select "select[name='transfer_match[method]'] option[value='manual_loan_payment'][selected]", count: 0
+    assert_select "select[name='transfer_match[method]'] option[value='new'][selected]"
+  end
+
+  test "limits manual annuity loan period options to nearby unpaid periods" do
+    create_annuity_loan_account
+    payment_entry = create_transaction(amount: 1798.65, account: accounts(:depository), date: Date.new(2024, 4, 20))
+
+    get new_transaction_transfer_match_path(payment_entry)
+
+    assert_response :success
+    assert_select "select[name='transfer_match[manual_loan_payment_id]'] option", count: 12
+  end
+
   test "scheduled annuity loan payment selection shows split preview" do
     loan_account = create_annuity_loan_account
     payment_entry = create_transaction(amount: 1798.65, account: accounts(:depository), date: Date.new(2024, 2, 1))

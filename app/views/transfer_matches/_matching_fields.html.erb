@@ -1,7 +1,7 @@
 <%# locals: (form:, entry:, candidates:, accounts:, scheduled_loan_payment_candidates: [], manual_loan_payment_candidates: [], selected_method: nil, selected_target_account_id: nil, selected_scheduled_loan_account_id: nil, selected_manual_loan_payment_id: nil, selected_matched_entry_id: nil) %>
 <% scheduled_loan_payment_candidates = local_assigns[:scheduled_loan_payment_candidates] || [] %>
 <% manual_loan_payment_candidates = local_assigns[:manual_loan_payment_candidates] || [] %>
-<% selected_method = local_assigns[:selected_method].presence || (scheduled_loan_payment_candidates.any? ? "scheduled_loan_payment" : candidates.any? ? "existing" : manual_loan_payment_candidates.any? ? "manual_loan_payment" : "new") %>
+<% selected_method = local_assigns[:selected_method].presence || (scheduled_loan_payment_candidates.any? ? "scheduled_loan_payment" : candidates.any? ? "existing" : "new") %>
 <% selected_target_account_id = local_assigns[:selected_target_account_id].presence %>
 <% selected_scheduled_loan_account_id = local_assigns[:selected_scheduled_loan_account_id].presence %>
 <% selected_manual_loan_payment_id = local_assigns[:selected_manual_loan_payment_id].presence %>

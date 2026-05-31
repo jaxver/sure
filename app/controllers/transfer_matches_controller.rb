@@ -1,4 +1,6 @@
 class TransferMatchesController < ApplicationController
+  MANUAL_LOAN_PAYMENT_CANDIDATE_LIMIT = 12
+
   before_action :set_entry
 
   def new
@@ -161,6 +163,8 @@ class TransferMatchesController < ApplicationController
 
           account.loan.amortization_schedule(as_of: @entry.date).rows
             .reject { |row| paid_period_numbers.include?(row.period_number) }
+            .sort_by { |row| [ (row.due_date - @entry.date).abs, row.period_number ] }
+            .first(MANUAL_LOAN_PAYMENT_CANDIDATE_LIMIT)
             .map do |row|
               split = Loan::PaymentSplitter.new(account.loan).split(
                 payment_date: @entry.date,

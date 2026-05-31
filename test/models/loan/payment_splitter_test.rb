@@ -84,6 +84,43 @@ class Loan::PaymentSplitterTest < ActiveSupport::TestCase
     assert_equal Date.new(2025, 3, 28), march_split.due_date
   end
 
+  test "matches payments from explicit first payment date before loan start" do
+    loan = Loan.new(
+      annuity_enabled: true,
+      started_on: Date.new(2025, 6, 1),
+      first_payment_on: Date.new(2025, 1, 28),
+      payment_cadence: "monthly",
+      initial_balance: 453407,
+      term_months: 360,
+      rate_type: "fixed"
+    )
+    loan.loan_rate_periods.build(starts_on: Date.new(2025, 6, 1), annual_rate: 3.65, payment_amount: 2074.15)
+    account = Account.create!(
+      family: families(:dylan_family),
+      name: "Backdated First Payment Mortgage",
+      balance: 453407,
+      currency: "EUR",
+      accountable: loan
+    )
+
+    first_split = Loan::PaymentSplitter.new(account.loan).split(
+      payment_date: Date.new(2025, 1, 28),
+      amount: -2074.15
+    )
+    march_split = Loan::PaymentSplitter.new(account.loan).split(
+      payment_date: Date.new(2025, 3, 28),
+      amount: -2074.15,
+      paid_period_numbers: [ 1 ]
+    )
+
+    assert first_split.matched?
+    assert_equal 1, first_split.period_number
+    assert_equal Date.new(2025, 1, 28), first_split.due_date
+    assert march_split.matched?
+    assert_equal 3, march_split.period_number
+    assert_equal Date.new(2025, 3, 28), march_split.due_date
+  end
+
   test "treats payment above scheduled amount as extra principal" do
     split = Loan::PaymentSplitter.new(@account.loan).split(
       payment_date: Date.new(2024, 2, 1),

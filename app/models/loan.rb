@@ -15,7 +15,6 @@ class Loan < ApplicationRecord
   validates :term_months, numericality: { only_integer: true, greater_than: 0 }, if: :annuity_enabled?
   validate :annuity_rate_periods_present
   validate :annuity_rate_period_start_dates_unique
-  validate :first_payment_not_before_start
   validates_associated :loan_rate_periods, if: :annuity_enabled?
 
   has_many :loan_rate_periods, dependent: :destroy
@@ -127,11 +126,4 @@ class Loan < ApplicationRecord
       errors.add(:loan_rate_periods, "cannot have duplicate start dates") if starts.uniq.size != starts.size
     end
 
-    def first_payment_not_before_start
-      return unless annuity_enabled?
-      return if first_payment_on.blank? || started_on.blank?
-      return if first_payment_on >= started_on
-
-      errors.add(:first_payment_on, "must be on or after the loan start date")
-    end
 end
