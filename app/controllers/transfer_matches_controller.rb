@@ -57,7 +57,11 @@ class TransferMatchesController < ApplicationController
     end
 
     def transfer_match_params
-      params.require(:transfer_match).permit(:method, :matched_entry_id, :target_account_id, :scheduled_loan_account_id, :manual_loan_payment_id, :loan_payment_split_action)
+      if request.get?
+        params.fetch(:transfer_match, ActionController::Parameters.new).permit(:method, :matched_entry_id, :target_account_id, :scheduled_loan_account_id, :manual_loan_payment_id, :loan_payment_split_action)
+      else
+        params.require(:transfer_match).permit(:method, :matched_entry_id, :target_account_id, :scheduled_loan_account_id, :manual_loan_payment_id, :loan_payment_split_action)
+      end
     end
 
     def resolve_target_account
