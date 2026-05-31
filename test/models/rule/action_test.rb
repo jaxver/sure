@@ -190,20 +190,22 @@ class Rule::ActionTest < ActiveSupport::TestCase
   end
 
   test "set_as_transfer_or_payment splits matched annuity loan payment into principal and interest" do
+    loan = Loan.new(
+      annuity_enabled: true,
+      started_on: Date.new(2024, 1, 1),
+      payment_cadence: "monthly",
+      initial_balance: 300000,
+      term_months: 360,
+      rate_type: "fixed"
+    )
+    loan.loan_rate_periods.build(starts_on: Date.new(2024, 1, 1), annual_rate: 6.0)
+
     loan_account = @family.accounts.create!(
       name: "Annuity Mortgage",
       balance: 300000,
       currency: "USD",
-      accountable: Loan.new(
-        annuity_enabled: true,
-        started_on: Date.new(2024, 1, 1),
-        payment_cadence: "monthly",
-        initial_balance: 300000,
-        term_months: 360,
-        rate_type: "fixed"
-      )
+      accountable: loan
     )
-    loan_account.loan.loan_rate_periods.create!(starts_on: Date.new(2024, 1, 1), annual_rate: 6.0)
 
     payment_entry = create_transaction(
       account: @account,
