@@ -45,14 +45,23 @@ en:
         balance_variance: Balance Variance
         interest: Interest
         payment_breakdown: Payment Breakdown
+        current_period: Current period %{period}
+        due_date: Due
+        match_statuses:
+          matched: Matched
+          remapped: Remapped
+          stale: Stale
+        payment_matches: Payment Matches
         payoff_date: Payoff Date
         principal: Principal
         reconcile_to_schedule: Reconcile to schedule
         remaining_principal: Remaining Principal
         remaining_term: Remaining Term
         scheduled_balance: Scheduled Balance
+        stored_period: Stored period %{period}
         term: Term
         total_interest: Total Interest
         type: Type
         unknown: Unknown
+        variance: Variance
         edit_loan_details: "Edit loan details"

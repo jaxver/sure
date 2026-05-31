@@ -80,7 +80,7 @@ class LoanTest < ActiveSupport::TestCase
     assert_equal 100000, account.loan.original_balance.amount
   end
 
-  test "paid annuity periods ignore stale schedule metadata" do
+  test "paid annuity periods remap stored period numbers by stored due date" do
     loan = Loan.new(
       annuity_enabled: true,
       initial_balance: 100000,
@@ -106,15 +106,23 @@ class LoanTest < ActiveSupport::TestCase
         kind: "funds_movement",
         extra: {
           "loan_payment_split" => {
-            "period_number" => 3,
-            "due_date" => "2025-09-01",
+            "period_number" => 8,
+            "due_date" => "2025-03-28",
+            "interest" => "300",
+            "principal" => "1700",
+            "extra_principal" => "0",
             "variance" => "0"
           }
         }
       )
     )
 
-    assert_empty account.loan.paid_annuity_period_numbers
+    match = account.loan.annuity_payment_matches.sole
+
+    assert_equal [ 3 ], account.loan.paid_annuity_period_numbers
+    assert_equal 8, match.fetch(:stored_period_number)
+    assert_equal 3, match.fetch(:current_period_number)
+    assert_equal :remapped, match.fetch(:status)
   end
 
   test "paid annuity periods ignore partial payment variance" do

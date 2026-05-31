@@ -66,7 +66,8 @@ class Loan < ApplicationRecord
       total_interest: schedule.total_interest,
       payoff_date: schedule.payoff_date,
       recent_rows: schedule.paid_rows.last(3),
-      upcoming_rows: schedule.upcoming_rows(limit: 3)
+      upcoming_rows: schedule.upcoming_rows(limit: 3),
+      payment_matches: annuity_payment_matches(limit: 12)
     }
   end
 
@@ -75,10 +76,11 @@ class Loan < ApplicationRecord
 
     account.transactions.filter_map do |transaction|
       split = annuity_payment_split_extra(transaction)
-      next unless split_current_for_schedule?(split)
+      period_number = current_annuity_period_number_for_split(split)
+      next unless period_number
       next if annuity_split_variance(split).positive?
 
-      split["period_number"].to_i
+      period_number
     end
   end
 
@@ -87,12 +89,41 @@ class Loan < ApplicationRecord
 
     account.transactions.each_with_object(Hash.new(BigDecimal("0"))) do |transaction, result|
       split = annuity_payment_split_extra(transaction)
-      next unless split_current_for_schedule?(split)
+      period_number = current_annuity_period_number_for_split(split)
+      next unless period_number
 
-      period_number = split["period_number"].to_i
       extra_principal = split["extra_principal"].to_s.to_d
       result[period_number] += extra_principal if extra_principal.positive?
     end
+  end
+
+  def annuity_payment_matches(limit: nil)
+    return [] unless account
+
+    matches = account.transactions.includes(:entry).filter_map do |transaction|
+      split = annuity_payment_split_extra(transaction)
+      next unless split
+
+      current_period_number = current_annuity_period_number_for_split(split)
+      stored_period_number = split["period_number"].to_i
+      stored_due_date = parse_annuity_split_due_date(split["due_date"])
+
+      {
+        transaction: transaction,
+        stored_period_number: stored_period_number,
+        current_period_number: current_period_number,
+        stored_due_date: stored_due_date,
+        current_due_date: current_period_number ? annuity_due_date_for_period(current_period_number) : nil,
+        interest: split["interest"].to_s.to_d,
+        principal: split["principal"].to_s.to_d,
+        extra_principal: split["extra_principal"].to_s.to_d,
+        variance: annuity_split_variance(split),
+        status: annuity_payment_match_status(stored_period_number, current_period_number)
+      }
+    end
+
+    matches = matches.sort_by { |match| [ match.fetch(:stored_due_date) || match.fetch(:transaction).entry.date, match.fetch(:transaction).entry.date ] }
+    limit ? matches.last(limit) : matches
   end
 
   def annuity_due_date_for_period(period_number)
@@ -145,17 +176,17 @@ class Loan < ApplicationRecord
       split if split.is_a?(Hash)
     end
 
-    def split_current_for_schedule?(split)
-      return false unless split
-
-      period_number = split["period_number"].to_i
-      expected_due_date = annuity_due_date_for_period(period_number)
-      return false unless expected_due_date
+    def current_annuity_period_number_for_split(split)
+      return nil unless split
 
       stored_due_date = parse_annuity_split_due_date(split["due_date"])
-      return false if stored_due_date && stored_due_date != expected_due_date
+      period_number_from_due_date = annuity_period_number_for_due_date(stored_due_date) if stored_due_date
+      return period_number_from_due_date if stored_due_date
 
-      true
+      stored_period_number = split["period_number"].to_i
+      return nil unless annuity_due_date_for_period(stored_period_number)
+
+      stored_period_number
     end
 
     def parse_annuity_split_due_date(value)
@@ -168,6 +199,21 @@ class Loan < ApplicationRecord
 
     def annuity_split_variance(split)
       split["variance"].to_s.to_d
+    end
+
+    def annuity_period_number_for_due_date(due_date)
+      return nil if due_date.blank?
+
+      1.upto(term_months.to_i).find do |period_number|
+        annuity_due_date_for_period(period_number) == due_date
+      end
+    end
+
+    def annuity_payment_match_status(stored_period_number, current_period_number)
+      return :stale unless current_period_number
+      return :matched if stored_period_number == current_period_number
+
+      :remapped
     end
 
 end

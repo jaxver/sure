@@ -246,4 +246,45 @@ class LoansControllerTest < ActionDispatch::IntegrationTest
     assert_select "div", text: /Interest/
     assert_select "div", text: /Principal/
   end
+
+  test "loan overview displays annuity payment match audit" do
+    @account.update!(balance: 299701.35)
+    @account.loan.loan_rate_periods.create!(starts_on: Date.new(2025, 6, 1), annual_rate: 3.65, payment_amount: 2074.15)
+    @account.loan.update!(
+      annuity_enabled: true,
+      started_on: Date.new(2025, 6, 1),
+      first_payment_on: Date.new(2025, 1, 28),
+      payment_cadence: "monthly",
+      initial_balance: 453407,
+      term_months: 360
+    )
+    @account.entries.create!(
+      amount: -1700,
+      currency: "USD",
+      date: Date.new(2025, 3, 28),
+      name: "Payment from Checking",
+      entryable: Transaction.new(
+        kind: "funds_movement",
+        extra: {
+          "loan_payment_split" => {
+            "period_number" => 8,
+            "due_date" => "2025-03-28",
+            "interest" => "374.15",
+            "principal" => "1700",
+            "extra_principal" => "0",
+            "variance" => "0",
+            "scheduled_payment" => "2074.15"
+          }
+        }
+      )
+    )
+
+    get account_path(@account)
+
+    assert_response :success
+    assert_select "h3", text: "Payment Matches"
+    assert_select "div", text: /Stored period 8/
+    assert_select "div", text: /Current period 3/
+    assert_select "span", text: "Remapped"
+  end
 end
