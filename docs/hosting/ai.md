@@ -167,6 +167,25 @@ Any service offering an OpenAI-compatible API should work:
 - [Anyscale](https://www.anyscale.com/) - Llama models
 - [Replicate](https://replicate.com/) - Various models
 
+### Synthetic
+
+Synthetic uses an OpenAI-compatible Chat Completions endpoint:
+
+```bash
+OPENAI_ACCESS_TOKEN=synthetic_...
+OPENAI_URI_BASE=https://api.synthetic.new/openai/v1
+OPENAI_MODEL=hf:deepseek-ai/DeepSeek-V3-0324
+```
+
+Synthetic model names must be prefixed with `hf:`. If you configure Synthetic through the external assistant instead of the builtin provider, set:
+
+```bash
+ASSISTANT_TYPE=external
+EXTERNAL_ASSISTANT_URL=https://api.synthetic.new/openai/v1/chat/completions
+EXTERNAL_ASSISTANT_TOKEN=synthetic_...
+EXTERNAL_ASSISTANT_AGENT_ID=hf:deepseek-ai/DeepSeek-V3-0324
+```
+
 ## Local LLM Setup (Ollama)
 
 [Ollama](https://ollama.ai/) is the recommended tool for running LLMs locally.

@@ -122,7 +122,7 @@ class TransferMatchesController < ApplicationController
 
       Loan::PaymentSplitter.new(target_account.loan).split(
         payment_date: @entry.date,
-        amount: @entry.amount
+        amount: @entry.amount.abs
       )
     end
 
@@ -145,7 +145,7 @@ class TransferMatchesController < ApplicationController
     def build_split_annuity_loan_transfer(loan_account)
       split = Loan::PaymentSplitter.new(loan_account.loan).split(
         payment_date: @entry.date,
-        amount: @entry.amount
+        amount: @entry.amount.abs
       )
 
       return build_transfer_without_split(loan_account) unless split.matched?

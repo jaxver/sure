@@ -131,7 +131,7 @@ class Rule::ActionExecutor::SetAsTransferOrPayment < Rule::ActionExecutor
     def loan_payment_split(target_account, entry)
       Loan::PaymentSplitter.new(target_account.loan).split(
         payment_date: entry.date,
-        amount: entry.amount
+        amount: entry.amount.abs
       )
     end
 

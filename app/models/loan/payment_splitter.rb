@@ -27,7 +27,8 @@ class Loan::PaymentSplitter
     row = nearest_unpaid_row(payment_date, paid_period_numbers.map(&:to_i))
     return unmatched(amount) unless row
 
-    remaining_payment = amount.to_d
+    payment_amount = amount.to_d.abs
+    remaining_payment = payment_amount
     interest = [ remaining_payment, row.interest ].min
     remaining_payment -= interest
 
@@ -35,7 +36,7 @@ class Loan::PaymentSplitter
     remaining_payment -= principal
 
     extra_principal = [ remaining_payment, BigDecimal("0") ].max
-    variance = row.scheduled_payment - amount.to_d
+    variance = row.scheduled_payment - payment_amount
     variance = BigDecimal("0") if variance.negative?
 
     Split.new(
@@ -68,7 +69,7 @@ class Loan::PaymentSplitter
         interest: BigDecimal("0"),
         principal: BigDecimal("0"),
         extra_principal: BigDecimal("0"),
-        variance: amount.to_d,
+        variance: amount.to_d.abs,
         scheduled_payment: nil
       )
     end

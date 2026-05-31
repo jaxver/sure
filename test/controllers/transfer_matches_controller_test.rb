@@ -109,6 +109,24 @@ class TransferMatchesControllerTest < ActionDispatch::IntegrationTest
     assert_select "option", text: /interest/
   end
 
+  test "shows scheduled annuity loan payment choice for explicit first payment cadence" do
+    create_annuity_loan_account(
+      started_on: Date.new(2024, 12, 28),
+      first_payment_on: Date.new(2025, 1, 28),
+      initial_balance: 453407,
+      annual_rate: 3.65,
+      payment_amount: 2074.15,
+      currency: "EUR"
+    )
+    payment_entry = create_transaction(amount: 2074.15, currency: "EUR", account: accounts(:depository), date: Date.new(2025, 3, 28))
+
+    get new_transaction_transfer_match_path(payment_entry)
+
+    assert_response :success
+    assert_select "option[value='scheduled_loan_payment']", text: /Match scheduled loan payment/
+    assert_select "option", text: /due Mar 28, 2025/
+  end
+
   test "scheduled annuity loan payment selection shows split preview" do
     loan_account = create_annuity_loan_account
     payment_entry = create_transaction(amount: 1798.65, account: accounts(:depository), date: Date.new(2024, 2, 1))
@@ -185,21 +203,22 @@ class TransferMatchesControllerTest < ActionDispatch::IntegrationTest
   end
 
   private
-    def create_annuity_loan_account
+    def create_annuity_loan_account(started_on: Date.new(2024, 1, 1), first_payment_on: nil, initial_balance: 300000, annual_rate: 6.0, payment_amount: nil, currency: "USD")
       loan = Loan.new(
         annuity_enabled: true,
-        started_on: Date.new(2024, 1, 1),
+        started_on: started_on,
+        first_payment_on: first_payment_on,
         payment_cadence: "monthly",
-        initial_balance: 300000,
+        initial_balance: initial_balance,
         term_months: 360,
         rate_type: "fixed"
       )
-      loan.loan_rate_periods.build(starts_on: Date.new(2024, 1, 1), annual_rate: 6.0)
+      loan.loan_rate_periods.build(starts_on: started_on, annual_rate: annual_rate, payment_amount: payment_amount)
 
       @user.family.accounts.create!(
         name: "Annuity Mortgage",
-        balance: 300000,
-        currency: "USD",
+        balance: initial_balance,
+        currency: currency,
         accountable: loan
       )
     end
