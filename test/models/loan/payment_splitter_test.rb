@@ -124,6 +124,31 @@ class Loan::PaymentSplitterTest < ActiveSupport::TestCase
     assert_in_delta 1798.65, split.variance, 0.01
   end
 
+  test "matches explicit unpaid period outside the date window" do
+    split = Loan::PaymentSplitter.new(@account.loan).split(
+      payment_date: Date.new(2024, 4, 20),
+      amount: 1798.65,
+      period_number: 3
+    )
+
+    assert split.matched?
+    assert_equal 3, split.period_number
+    assert_equal Date.new(2024, 4, 1), split.due_date
+    assert_in_delta 1497.00, split.interest, 0.01
+    assert split.principal.positive?
+  end
+
+  test "does not match explicit period that is already paid" do
+    split = Loan::PaymentSplitter.new(@account.loan).split(
+      payment_date: Date.new(2024, 4, 20),
+      amount: 1798.65,
+      paid_period_numbers: [ 3 ],
+      period_number: 3
+    )
+
+    assert_not split.matched?
+  end
+
   test "skips schedule rows already recorded on loan transactions" do
     @account.entries.create!(
       amount: -298.65,
@@ -147,5 +172,33 @@ class Loan::PaymentSplitterTest < ActiveSupport::TestCase
 
     assert split.matched?
     assert_equal 2, split.period_number
+  end
+
+  test "recorded extra principal affects future split calculations" do
+    @account.entries.create!(
+      amount: -500,
+      currency: "USD",
+      date: Date.new(2024, 2, 1),
+      name: "Payment from Checking",
+      entryable: Transaction.new(
+        kind: "funds_movement",
+        extra: {
+          "loan_payment_split" => {
+            "period_number" => 1,
+            "extra_principal" => "201.35"
+          }
+        }
+      )
+    )
+
+    split = Loan::PaymentSplitter.new(@account.loan).split(
+      payment_date: Date.new(2024, 3, 1),
+      amount: 1798.65
+    )
+
+    assert split.matched?
+    assert_equal 2, split.period_number
+    assert_in_delta 1497.00, split.interest, 0.01
+    assert_in_delta 301.65, split.principal, 0.01
   end
 end

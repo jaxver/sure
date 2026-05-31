@@ -5,6 +5,7 @@ class TransferMatchesController < ApplicationController
     @accounts = Current.family.accounts.writable_by(Current.user).visible.alphabetically.where.not(id: @entry.account_id)
     @transfer_match_candidates = @entry.transaction.transfer_match_candidates
     @annuity_loan_payment_candidates = annuity_loan_payment_candidates
+    @manual_annuity_loan_payment_candidates = manual_annuity_loan_payment_candidates
   end
 
   def create
@@ -52,15 +53,18 @@ class TransferMatchesController < ApplicationController
       @accounts = Current.family.accounts.writable_by(Current.user).visible.alphabetically.where.not(id: @entry.account_id)
       @transfer_match_candidates = @entry.transaction.transfer_match_candidates
       @annuity_loan_payment_candidates = annuity_loan_payment_candidates
+      @manual_annuity_loan_payment_candidates = manual_annuity_loan_payment_candidates
     end
 
     def transfer_match_params
-      params.require(:transfer_match).permit(:method, :matched_entry_id, :target_account_id, :scheduled_loan_account_id, :loan_payment_split_action)
+      params.require(:transfer_match).permit(:method, :matched_entry_id, :target_account_id, :scheduled_loan_account_id, :manual_loan_payment_id, :loan_payment_split_action)
     end
 
     def resolve_target_account
       if transfer_match_params[:method] == "scheduled_loan_payment"
         accessible_accounts.find(transfer_match_params[:scheduled_loan_account_id])
+      elsif transfer_match_params[:method] == "manual_loan_payment"
+        manual_loan_payment_selection.fetch(:account)
       elsif transfer_match_params[:method] == "new"
         accessible_accounts.find(transfer_match_params[:target_account_id])
       else
@@ -103,7 +107,7 @@ class TransferMatchesController < ApplicationController
     end
 
     def accepted_new_annuity_loan_payment?(target_account)
-      %w[new scheduled_loan_payment].include?(transfer_match_params[:method]) &&
+      %w[new scheduled_loan_payment manual_loan_payment].include?(transfer_match_params[:method]) &&
         transfer_match_params[:loan_payment_split_action] == "accept" &&
         @entry.amount.positive? &&
         target_account.loan? &&
@@ -122,7 +126,8 @@ class TransferMatchesController < ApplicationController
 
       Loan::PaymentSplitter.new(target_account.loan).split(
         payment_date: @entry.date,
-        amount: @entry.amount.abs
+        amount: @entry.amount.abs,
+        period_number: manual_loan_payment_period_number_for(target_account)
       )
     end
 
@@ -142,10 +147,64 @@ class TransferMatchesController < ApplicationController
         end
     end
 
+    def manual_annuity_loan_payment_candidates
+      return [] unless @entry.amount.positive?
+
+      @accounts
+        .select { |account| account.loan? && account.loan.annuity_enabled? }
+        .flat_map do |account|
+          paid_period_numbers = account.loan.paid_annuity_period_numbers
+
+          account.loan.amortization_schedule(as_of: @entry.date).rows
+            .reject { |row| paid_period_numbers.include?(row.period_number) }
+            .map do |row|
+              split = Loan::PaymentSplitter.new(account.loan).split(
+                payment_date: @entry.date,
+                amount: @entry.amount.abs,
+                paid_period_numbers: paid_period_numbers,
+                period_number: row.period_number
+              )
+
+              {
+                account: account,
+                split: split,
+                value: manual_loan_payment_value(account, row.period_number)
+              }
+            end
+        end
+        .sort_by { |candidate| (candidate.fetch(:split).due_date - @entry.date).abs }
+    end
+
+    def manual_loan_payment_selection
+      account_id, period_number = transfer_match_params[:manual_loan_payment_id].to_s.split(":", 2)
+      account = accessible_accounts.find(account_id)
+      period_number = period_number.to_i
+
+      unless account.loan? && account.loan.annuity_enabled? && period_number.positive?
+        raise ActiveRecord::RecordNotFound
+      end
+
+      { account: account, period_number: period_number }
+    end
+
+    def manual_loan_payment_period_number_for(target_account)
+      return nil unless transfer_match_params[:method] == "manual_loan_payment"
+
+      selection = manual_loan_payment_selection
+      return nil unless selection.fetch(:account).id == target_account.id
+
+      selection.fetch(:period_number)
+    end
+
+    def manual_loan_payment_value(account, period_number)
+      "#{account.id}:#{period_number}"
+    end
+
     def build_split_annuity_loan_transfer(loan_account)
       split = Loan::PaymentSplitter.new(loan_account.loan).split(
         payment_date: @entry.date,
-        amount: @entry.amount.abs
+        amount: @entry.amount.abs,
+        period_number: manual_loan_payment_period_number_for(loan_account)
       )
 
       return build_transfer_without_split(loan_account) unless split.matched?

@@ -48,7 +48,11 @@ class Loan < ApplicationRecord
   end
 
   def amortization_schedule(as_of: Date.current)
-    Loan::AmortizationSchedule.new(self, as_of: as_of)
+    Loan::AmortizationSchedule.new(
+      self,
+      as_of: as_of,
+      extra_principal_by_period: annuity_extra_principal_by_period
+    )
   end
 
   def annuity_summary(as_of: Date.current)
@@ -72,6 +76,21 @@ class Loan < ApplicationRecord
 
     account.transactions.filter_map do |transaction|
       transaction.extra&.dig("loan_payment_split", "period_number")&.to_i
+    end
+  end
+
+  def annuity_extra_principal_by_period
+    return {} unless account
+
+    account.transactions.each_with_object(Hash.new(BigDecimal("0"))) do |transaction, result|
+      split = transaction.extra&.fetch("loan_payment_split", nil)
+      next unless split
+
+      period_number = split["period_number"].to_i
+      next if period_number <= 0
+
+      extra_principal = split["extra_principal"].to_d
+      result[period_number] += extra_principal if extra_principal.positive?
     end
   end
 

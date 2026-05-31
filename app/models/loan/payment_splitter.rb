@@ -22,9 +22,13 @@ class Loan::PaymentSplitter
     @date_window = date_window
   end
 
-  def split(payment_date:, amount:, paid_period_numbers: nil)
+  def split(payment_date:, amount:, paid_period_numbers: nil, period_number: nil)
     paid_period_numbers ||= loan.paid_annuity_period_numbers
-    row = nearest_unpaid_row(payment_date, paid_period_numbers.map(&:to_i))
+    row = if period_number.present?
+      unpaid_row_for_period(period_number, paid_period_numbers.map(&:to_i))
+    else
+      nearest_unpaid_row(payment_date, paid_period_numbers.map(&:to_i))
+    end
     return unmatched(amount) unless row
 
     payment_amount = amount.to_d.abs
@@ -55,10 +59,17 @@ class Loan::PaymentSplitter
     attr_reader :loan, :date_window
 
     def nearest_unpaid_row(payment_date, paid_period_numbers)
-      Loan::AmortizationSchedule.new(loan, as_of: payment_date).rows
+      loan.amortization_schedule(as_of: payment_date).rows
         .reject { |row| paid_period_numbers.include?(row.period_number) }
         .select { |row| (row.due_date - payment_date).abs <= date_window.to_i }
         .min_by { |row| (row.due_date - payment_date).abs }
+    end
+
+    def unpaid_row_for_period(period_number, paid_period_numbers)
+      period_number = period_number.to_i
+      return nil if period_number <= 0 || paid_period_numbers.include?(period_number)
+
+      loan.amortization_schedule.rows.find { |row| row.period_number == period_number }
     end
 
     def unmatched(amount)

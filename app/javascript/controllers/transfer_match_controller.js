@@ -2,7 +2,7 @@ import { Controller } from "@hotwired/stimulus";
 
 // Connects to data-controller="transfer-match"
 export default class extends Controller {
-  static targets = ["newSelect", "existingSelect", "scheduledLoanPaymentSelect"];
+  static targets = ["newSelect", "existingSelect", "scheduledLoanPaymentSelect", "manualLoanPaymentSelect"];
 
   connect() {
     this.updateView(this.element.querySelector("select").value);
@@ -23,6 +23,10 @@ export default class extends Controller {
 
     if (this.hasScheduledLoanPaymentSelectTarget) {
       this.scheduledLoanPaymentSelectTarget.classList.toggle("hidden", value !== "scheduled_loan_payment");
+    }
+
+    if (this.hasManualLoanPaymentSelectTarget) {
+      this.manualLoanPaymentSelectTarget.classList.toggle("hidden", value !== "manual_loan_payment");
     }
   }
 }

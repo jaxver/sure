@@ -127,6 +127,17 @@ class TransferMatchesControllerTest < ActionDispatch::IntegrationTest
     assert_select "option", text: /due Mar 28, 2025/
   end
 
+  test "shows manual annuity loan payment periods when automatic date matching misses" do
+    loan_account = create_annuity_loan_account
+    payment_entry = create_transaction(amount: 1798.65, account: accounts(:depository), date: Date.new(2024, 4, 20))
+
+    get new_transaction_transfer_match_path(payment_entry)
+
+    assert_response :success
+    assert_select "option[value='manual_loan_payment']", text: /Match loan payment manually/
+    assert_select "option[value='#{loan_account.id}:3']", text: /period 3/
+  end
+
   test "scheduled annuity loan payment selection shows split preview" do
     loan_account = create_annuity_loan_account
     payment_entry = create_transaction(amount: 1798.65, account: accounts(:depository), date: Date.new(2024, 2, 1))
@@ -170,6 +181,43 @@ class TransferMatchesControllerTest < ActionDispatch::IntegrationTest
 
     interest_entry = payment_entry.child_entries.where(name: "Interest for #{loan_account.name}").sole
     assert_in_delta 1500, interest_entry.amount, 0.01
+  end
+
+  test "accepts manually selected annuity loan payment period" do
+    loan_account = create_annuity_loan_account
+    payment_entry = create_transaction(amount: 1798.65, account: accounts(:depository), date: Date.new(2024, 4, 20))
+
+    assert_no_difference [ "Transfer.count", "Entry.count", "Transaction.count" ] do
+      post transaction_transfer_match_path(payment_entry), params: {
+        transfer_match: {
+          method: "manual_loan_payment",
+          manual_loan_payment_id: "#{loan_account.id}:3"
+        }
+      }
+    end
+
+    assert_response :unprocessable_entity
+    assert_select "[data-testid='loan-payment-split-preview']"
+
+    assert_difference -> { Transfer.count } => 1,
+      -> { Entry.count } => 3,
+      -> { Transaction.count } => 3 do
+      post transaction_transfer_match_path(payment_entry), params: {
+        transfer_match: {
+          method: "manual_loan_payment",
+          manual_loan_payment_id: "#{loan_account.id}:3",
+          loan_payment_split_action: "accept"
+        }
+      }
+    end
+
+    payment_entry.reload
+    transfer = Transfer.order(created_at: :desc).first
+
+    assert payment_entry.split_parent?
+    assert_equal "3", transfer.inflow_transaction.extra.dig("loan_payment_split", "period_number").to_s
+    assert_in_delta 301.64, transfer.outflow_transaction.entry.amount, 0.01
+    assert_in_delta(-301.64, transfer.inflow_transaction.entry.amount, 0.01)
   end
 
   test "accepts annuity split when matching existing cash payment to new loan transaction" do

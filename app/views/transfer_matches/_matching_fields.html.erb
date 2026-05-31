@@ -1,15 +1,18 @@
-<%# locals: (form:, entry:, candidates:, accounts:, scheduled_loan_payment_candidates: [], selected_method: nil, selected_target_account_id: nil, selected_scheduled_loan_account_id: nil, selected_matched_entry_id: nil) %>
+<%# locals: (form:, entry:, candidates:, accounts:, scheduled_loan_payment_candidates: [], manual_loan_payment_candidates: [], selected_method: nil, selected_target_account_id: nil, selected_scheduled_loan_account_id: nil, selected_manual_loan_payment_id: nil, selected_matched_entry_id: nil) %>
 <% scheduled_loan_payment_candidates = local_assigns[:scheduled_loan_payment_candidates] || [] %>
-<% selected_method = local_assigns[:selected_method].presence || (scheduled_loan_payment_candidates.any? ? "scheduled_loan_payment" : candidates.any? ? "existing" : "new") %>
+<% manual_loan_payment_candidates = local_assigns[:manual_loan_payment_candidates] || [] %>
+<% selected_method = local_assigns[:selected_method].presence || (scheduled_loan_payment_candidates.any? ? "scheduled_loan_payment" : candidates.any? ? "existing" : manual_loan_payment_candidates.any? ? "manual_loan_payment" : "new") %>
 <% selected_target_account_id = local_assigns[:selected_target_account_id].presence %>
 <% selected_scheduled_loan_account_id = local_assigns[:selected_scheduled_loan_account_id].presence %>
+<% selected_manual_loan_payment_id = local_assigns[:selected_manual_loan_payment_id].presence %>
 <% selected_matched_entry_id = local_assigns[:selected_matched_entry_id].presence %>
 <% matching_methods = [] %>
 <% matching_methods << [t(".match_scheduled_loan_payment_recommended"), "scheduled_loan_payment"] if scheduled_loan_payment_candidates.any? %>
 <% matching_methods << [t(".match_existing_recommended"), "existing"] if candidates.any? %>
+<% matching_methods << [t(".match_loan_payment_manually"), "manual_loan_payment"] if manual_loan_payment_candidates.any? %>
 <% matching_methods << [t(".create_new_transaction"), "new"] %>
 
-<% if candidates.any? || scheduled_loan_payment_candidates.any? %>
+<% if candidates.any? || scheduled_loan_payment_candidates.any? || manual_loan_payment_candidates.any? %>
   <div data-controller="transfer-match" class="space-y-2">
     <p class="text-sm text-secondary">
       <%= t(".select_method") %>
@@ -36,6 +39,26 @@
                     [label, account.id]
                   },
                   { label: t(".scheduled_loan_payment"), selected: selected_scheduled_loan_account_id } %>
+      </div>
+    <% end %>
+
+    <% if manual_loan_payment_candidates.any? %>
+      <div data-transfer-match-target="manualLoanPaymentSelect" class="<%= "hidden" unless selected_method == "manual_loan_payment" %>">
+        <%= form.select :manual_loan_payment_id,
+                  manual_loan_payment_candidates.map { |candidate|
+                    account = candidate.fetch(:account)
+                    split = candidate.fetch(:split)
+                    label = t(
+                      ".manual_loan_payment_option",
+                      account: account.name,
+                      period: split.period_number,
+                      due_date: format_date(split.due_date),
+                      principal: format_money(Money.new(split.principal + split.extra_principal, account.currency)),
+                      interest: format_money(Money.new(split.interest, account.currency))
+                    )
+                    [label, candidate.fetch(:value)]
+                  },
+                  { label: t(".manual_loan_payment"), selected: selected_manual_loan_payment_id } %>
       </div>
     <% end %>
 
