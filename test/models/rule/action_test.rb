@@ -189,6 +189,55 @@ class Rule::ActionTest < ActiveSupport::TestCase
     assert_equal category, transfer.outflow_transaction.category
   end
 
+  test "set_as_transfer_or_payment splits matched annuity loan payment into principal and interest" do
+    loan_account = @family.accounts.create!(
+      name: "Annuity Mortgage",
+      balance: 300000,
+      currency: "USD",
+      accountable: Loan.new(
+        annuity_enabled: true,
+        started_on: Date.new(2024, 1, 1),
+        payment_cadence: "monthly",
+        initial_balance: 300000,
+        term_months: 360,
+        rate_type: "fixed"
+      )
+    )
+    loan_account.loan.loan_rate_periods.create!(starts_on: Date.new(2024, 1, 1), annual_rate: 6.0)
+
+    payment_entry = create_transaction(
+      account: @account,
+      amount: 1798.65,
+      date: Date.new(2024, 2, 1),
+      name: "Mortgage payment"
+    )
+
+    action = Rule::Action.new(
+      rule: @transaction_rule,
+      action_type: "set_as_transfer_or_payment",
+      value: loan_account.id
+    )
+
+    action.apply(Transaction.where(id: payment_entry.transaction.id))
+
+    payment_entry.reload
+    assert payment_entry.split_parent?
+    assert payment_entry.excluded?
+
+    principal_entry = payment_entry.child_entries.find_by!(name: "Principal for Annuity Mortgage")
+    interest_entry = payment_entry.child_entries.find_by!(name: "Interest for Annuity Mortgage")
+    transfer = Transfer.find_by!(outflow_transaction: principal_entry.transaction)
+
+    assert_in_delta 298.65, principal_entry.amount, 0.01
+    assert_in_delta 1500, interest_entry.amount, 0.01
+    assert_in_delta(-298.65, transfer.inflow_transaction.entry.amount, 0.01)
+    assert_equal loan_account, transfer.inflow_transaction.entry.account
+    assert_equal "loan_payment", principal_entry.transaction.kind
+    assert_equal "funds_movement", transfer.inflow_transaction.kind
+    assert_equal "standard", interest_entry.transaction.kind
+    assert_equal "1", principal_entry.transaction.extra.dig("loan_payment_split", "period_number").to_s
+  end
+
   test "set_investment_activity_label ignores invalid values" do
     action = Rule::Action.new(
       rule: @transaction_rule,

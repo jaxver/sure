@@ -159,6 +159,33 @@ class Assistant::External::ClientTest < ActiveSupport::TestCase
     assert_equal [ "Hello" ], chunks
   end
 
+  test "handles final SSE event without trailing newline" do
+    mock_http_streaming_response("data: {\"choices\":[{\"delta\":{\"content\":\"no newline\"}}],\"model\":\"m\"}")
+
+    chunks = []
+    model = @client.chat(messages: [ { role: "user", content: "test" } ]) { |t| chunks << t }
+
+    assert_equal [ "no newline" ], chunks
+    assert_equal "m", model
+  end
+
+  test "handles non-streaming OpenAI-compatible chat response" do
+    body = {
+      "choices" => [
+        { "message" => { "role" => "assistant", "content" => "Plain JSON response" } }
+      ],
+      "model" => "synthetic-agent"
+    }.to_json
+
+    mock_http_streaming_response(body)
+
+    chunks = []
+    model = @client.chat(messages: [ { role: "user", content: "test" } ]) { |t| chunks << t }
+
+    assert_equal [ "Plain JSON response" ], chunks
+    assert_equal "synthetic-agent", model
+  end
+
   test "routes through HTTPS_PROXY when set" do
     sse_body = "data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}],\"model\":\"m\"}\n\ndata: [DONE]\n\n"
 

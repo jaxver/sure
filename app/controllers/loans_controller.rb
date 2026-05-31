@@ -12,6 +12,7 @@ class LoansController < ApplicationController
     :initial_balance,
     :annuity_enabled,
     :started_on,
+    :first_payment_on,
     :payment_cadence,
     loan_rate_periods_attributes: [ :id, :starts_on, :annual_rate, :payment_amount, :_destroy ]
   )

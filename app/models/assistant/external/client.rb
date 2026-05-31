@@ -67,6 +67,8 @@ class Assistant::External::Client
     def stream_response(http, request, &block)
       model = nil
       buffer = +""
+      raw_body = +""
+      saw_sse_data = false
       done = false
 
       http.request(request) do |response|
@@ -78,6 +80,7 @@ class Assistant::External::Client
         response.read_body do |chunk|
           break if done
           buffer << chunk
+          raw_body << chunk
 
           if buffer.bytesize > MAX_SSE_BUFFER
             raise Assistant::Error, "External assistant stream exceeded maximum buffer size."
@@ -85,28 +88,45 @@ class Assistant::External::Client
 
           while (line_end = buffer.index("\n"))
             line = buffer.slice!(0..line_end).strip
-            next if line.empty?
-            next unless line.start_with?("data:")
-
-            data = line.delete_prefix("data:")
-            data = data.delete_prefix(" ") # SSE spec: strip one optional leading space
-
-            if data == "[DONE]"
-              done = true
-              break
-            end
-
-            parsed = parse_sse_data(data)
-            next unless parsed
-
-            model ||= parsed["model"]
-            content = parsed.dig("choices", 0, "delta", "content")
-            block.call(content) unless content.nil?
+            result = process_sse_line(line, &block)
+            saw_sse_data ||= result[:saw_sse_data]
+            model ||= result[:model]
+            done ||= result[:done]
+            break if done
           end
         end
       end
 
+      if !done && buffer.strip.present?
+        result = process_sse_line(buffer.strip, &block)
+        saw_sse_data ||= result[:saw_sse_data]
+        model ||= result[:model]
+        done ||= result[:done]
+      end
+
+      unless saw_sse_data
+        parsed = parse_json_response(raw_body)
+        model ||= parsed&.dig("model")
+        content = extract_response_content(parsed)
+        block.call(content) if content.present?
+      end
+
       model
+    end
+
+    def process_sse_line(line, &block)
+      return { saw_sse_data: false, model: nil, done: false } if line.empty?
+      return { saw_sse_data: false, model: nil, done: false } unless line.start_with?("data:")
+
+      data = line.delete_prefix("data:")
+      data = data.delete_prefix(" ") # SSE spec: strip one optional leading space
+      return { saw_sse_data: true, model: nil, done: true } if data == "[DONE]"
+
+      parsed = parse_json_response(data)
+      content = extract_response_content(parsed)
+      block.call(content) unless content.nil?
+
+      { saw_sse_data: true, model: parsed&.dig("model"), done: false }
     end
 
     def build_http(uri)
@@ -166,10 +186,18 @@ class Assistant::External::Client
       request
     end
 
-    def parse_sse_data(data)
+    def parse_json_response(data)
       JSON.parse(data)
     rescue JSON::ParserError => e
-      Rails.logger.warn("[External::Client] Unparseable SSE data: #{e.message}")
+      Rails.logger.warn("[External::Client] Unparseable response data: #{e.message}")
       nil
+    end
+
+    def extract_response_content(parsed)
+      return nil unless parsed.is_a?(Hash)
+
+      parsed.dig("choices", 0, "delta", "content") ||
+        parsed.dig("choices", 0, "message", "content") ||
+        parsed["delta"]
     end
 end

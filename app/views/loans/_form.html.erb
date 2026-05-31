@@ -35,9 +35,12 @@
           <span class="text-sm font-medium text-primary"><%= t("loans.form.annuity_enabled") %></span>
         </div>
 
-        <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
           <%= loan_form.date_field :started_on,
                                    label: t("loans.form.started_on") %>
+
+          <%= loan_form.date_field :first_payment_on,
+                                   label: t("loans.form.first_payment_on") %>
 
           <%= loan_form.select :payment_cadence,
                                [[t("loans.form.monthly"), "monthly"]],

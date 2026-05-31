@@ -30,6 +30,20 @@ class Loan::AmortizationScheduleTest < ActiveSupport::TestCase
     assert_equal Date.new(2054, 1, 1), schedule.payoff_date
   end
 
+  test "uses configured first payment date as the first schedule due date" do
+    @loan.started_on = Date.new(2025, 1, 6)
+    @loan.first_payment_on = Date.new(2025, 1, 28)
+    @loan.term_months = 3
+    @loan.loan_rate_periods.build(starts_on: Date.new(2025, 1, 6), annual_rate: 3.65)
+    create_account!(@loan, balance: 300000)
+
+    rows = Loan::AmortizationSchedule.new(@loan).rows
+
+    assert_equal Date.new(2025, 1, 28), rows[0].due_date
+    assert_equal Date.new(2025, 2, 28), rows[1].due_date
+    assert_equal Date.new(2025, 3, 28), rows[2].due_date
+  end
+
   test "generates zero-interest schedule" do
     @loan.initial_balance = 1200
     @loan.term_months = 12

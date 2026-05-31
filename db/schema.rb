@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_05_30_090000) do
+ActiveRecord::Schema[7.2].define(version: 2026_05_31_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pgcrypto"
   enable_extension "plpgsql"
@@ -1082,6 +1082,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_05_30_090000) do
     t.boolean "annuity_enabled", default: false, null: false
     t.date "started_on"
     t.string "payment_cadence", default: "monthly", null: false
+    t.date "first_payment_on"
   end
 
   create_table "loan_rate_periods", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|

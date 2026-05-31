@@ -76,7 +76,7 @@ class Loan::AmortizationSchedule
       1.upto(loan.term_months.to_i) do |period_number|
         break if remaining_principal <= 0
 
-        due_date = loan.started_on.advance(months: period_number)
+        due_date = due_date_for(period_number)
         rate_period = rate_period_for(due_date)
         if rate_period != current_period
           current_period = rate_period
@@ -139,6 +139,14 @@ class Loan::AmortizationSchedule
 
     def rate_period_for(date)
       rate_periods.select { |period| period.starts_on <= date }.last || rate_periods.first
+    end
+
+    def due_date_for(period_number)
+      first_payment_on.advance(months: period_number - 1)
+    end
+
+    def first_payment_on
+      @first_payment_on ||= loan.first_payment_on.presence || loan.started_on.advance(months: 1)
     end
 
     def rate_periods

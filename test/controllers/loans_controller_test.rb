@@ -109,6 +109,7 @@ class LoansControllerTest < ActionDispatch::IntegrationTest
             subtype: "mortgage",
             annuity_enabled: "1",
             started_on: "2024-01-01",
+            first_payment_on: "2024-01-28",
             payment_cadence: "monthly",
             term_months: 360,
             initial_balance: 300000,
@@ -125,6 +126,7 @@ class LoansControllerTest < ActionDispatch::IntegrationTest
 
     assert loan.annuity_enabled?
     assert_equal Date.new(2024, 1, 1), loan.started_on
+    assert_equal Date.new(2024, 1, 28), loan.first_payment_on
     assert_equal "monthly", loan.payment_cadence
     assert_equal [ Date.new(2024, 1, 1), Date.new(2029, 1, 1) ], loan.loan_rate_periods.order(:starts_on).pluck(:starts_on)
     assert_equal 1750, loan.loan_rate_periods.order(:starts_on).last.payment_amount

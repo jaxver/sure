@@ -15,8 +15,9 @@ class Rule::ActionExecutor::SetAsTransferOrPayment < Rule::ActionExecutor
     count_modified_resources(scope) do |txn|
       entry = txn.entry
       unless txn.transfer?
-        transfer = build_transfer(target_account, entry)
+        transfer = nil
         Transfer.transaction do
+          transfer = build_transfer(target_account, entry)
           transfer.save!
 
           # Use DESTINATION (inflow) account for kind, matching Transfer::Creator logic
@@ -40,6 +41,75 @@ class Rule::ActionExecutor::SetAsTransferOrPayment < Rule::ActionExecutor
 
   private
     def build_transfer(target_account, entry)
+      if split_annuity_loan_payment?(target_account, entry)
+        return build_split_annuity_loan_transfer(target_account, entry)
+      end
+
+      build_standard_transfer(target_account, entry)
+    end
+
+    def split_annuity_loan_payment?(target_account, entry)
+      return false unless entry.amount.positive?
+      return false unless target_account.loan? && target_account.loan.annuity_enabled?
+      return false if entry.split_parent? || entry.split_child?
+
+      loan_payment_split(target_account, entry)&.matched?
+    end
+
+    def build_split_annuity_loan_transfer(loan_account, entry)
+      split = loan_payment_split(loan_account, entry)
+      return build_standard_transfer(loan_account, entry) unless split.matched?
+
+      split_parent_into_loan_payment!(loan_account, entry, split)
+      principal_entry = entry.child_entries.find_by!(name: "Principal for #{loan_account.name}")
+
+      loan_transaction = Transaction.new(
+        kind: "funds_movement",
+        extra: loan_payment_extra(split),
+        entry: loan_account.entries.build(
+          amount: (split.principal + split.extra_principal) * -1,
+          currency: loan_account.currency,
+          date: entry.date,
+          name: "Payment from #{entry.account.name}",
+          user_modified: true
+        )
+      )
+
+      Transfer.new(
+        inflow_transaction: loan_transaction,
+        outflow_transaction: principal_entry.transaction,
+        status: "confirmed"
+      )
+    end
+
+    def split_parent_into_loan_payment!(loan_account, entry, split)
+      principal_amount = split.principal + split.extra_principal
+
+      entry.split!([
+        {
+          name: "Principal for #{loan_account.name}",
+          amount: principal_amount,
+          category_id: entry.transaction.category_id,
+          excluded: false
+        },
+        {
+          name: "Interest for #{loan_account.name}",
+          amount: split.interest,
+          category_id: entry.transaction.category_id,
+          excluded: false
+        }
+      ])
+
+      entry.child_entries.find_by!(name: "Principal for #{loan_account.name}").transaction.update!(
+        extra: loan_payment_extra(split)
+      )
+      entry.child_entries.find_by!(name: "Interest for #{loan_account.name}").transaction.update!(
+        kind: "standard",
+        extra: loan_payment_extra(split)
+      )
+    end
+
+    def build_standard_transfer(target_account, entry)
       missing_transaction = Transaction.new(
         entry: target_account.entries.build(
           amount: entry.amount * -1,
@@ -56,5 +126,26 @@ class Rule::ActionExecutor::SetAsTransferOrPayment < Rule::ActionExecutor
       )
       transfer.status = "confirmed"
       transfer
+    end
+
+    def loan_payment_split(target_account, entry)
+      Loan::PaymentSplitter.new(target_account.loan).split(
+        payment_date: entry.date,
+        amount: entry.amount
+      )
+    end
+
+    def loan_payment_extra(split)
+      {
+        "loan_payment_split" => {
+          "period_number" => split.period_number,
+          "due_date" => split.due_date.to_s,
+          "interest" => split.interest.to_s,
+          "principal" => split.principal.to_s,
+          "extra_principal" => split.extra_principal.to_s,
+          "variance" => split.variance.to_s,
+          "scheduled_payment" => split.scheduled_payment.to_s
+        }
+      }
     end
 end

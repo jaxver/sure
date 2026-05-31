@@ -17,6 +17,7 @@ en:
       rate_period_starts_on: Starts on
       remove_rate_period: Remove
       started_on: Loan start date
+      first_payment_on: First payment date
       term_months: Term (months)
       term_months_placeholder: '360'
       none: None
