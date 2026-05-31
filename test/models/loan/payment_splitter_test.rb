@@ -134,10 +134,23 @@ class Loan::PaymentSplitterTest < ActiveSupport::TestCase
     assert_in_delta 0, split.variance, 0.01
   end
 
-  test "records underpayment variance instead of forcing scheduled balance" do
+  test "does not automatically match underpayment to a scheduled period" do
     split = Loan::PaymentSplitter.new(@account.loan).split(
       payment_date: Date.new(2024, 2, 1),
       amount: 1000
+    )
+
+    assert_not split.matched?
+    assert_in_delta 0, split.principal, 0.01
+    assert_in_delta 0, split.extra_principal, 0.01
+    assert_in_delta 1000, split.variance, 0.01
+  end
+
+  test "allows manual underpayment matching to an explicit period" do
+    split = Loan::PaymentSplitter.new(@account.loan).split(
+      payment_date: Date.new(2024, 2, 1),
+      amount: 1000,
+      period_number: 1
     )
 
     assert split.matched?

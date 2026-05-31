@@ -80,6 +80,80 @@ class LoanTest < ActiveSupport::TestCase
     assert_equal 100000, account.loan.original_balance.amount
   end
 
+  test "paid annuity periods ignore stale schedule metadata" do
+    loan = Loan.new(
+      annuity_enabled: true,
+      initial_balance: 100000,
+      started_on: Date.new(2025, 6, 1),
+      first_payment_on: Date.new(2025, 1, 28),
+      payment_cadence: "monthly",
+      term_months: 360
+    )
+    loan.loan_rate_periods.build(starts_on: Date.new(2025, 6, 1), annual_rate: 3.65)
+    account = Account.create!(
+      family: families(:dylan_family),
+      name: "Mortgage with stale metadata",
+      balance: 100000,
+      currency: "EUR",
+      accountable: loan
+    )
+    account.entries.create!(
+      amount: -100,
+      currency: "EUR",
+      date: Date.new(2025, 3, 28),
+      name: "Payment from Checking",
+      entryable: Transaction.new(
+        kind: "funds_movement",
+        extra: {
+          "loan_payment_split" => {
+            "period_number" => 3,
+            "due_date" => "2025-09-01",
+            "variance" => "0"
+          }
+        }
+      )
+    )
+
+    assert_empty account.loan.paid_annuity_period_numbers
+  end
+
+  test "paid annuity periods ignore partial payment variance" do
+    loan = Loan.new(
+      annuity_enabled: true,
+      initial_balance: 100000,
+      started_on: Date.new(2025, 1, 1),
+      first_payment_on: Date.new(2025, 1, 28),
+      payment_cadence: "monthly",
+      term_months: 360
+    )
+    loan.loan_rate_periods.build(starts_on: Date.new(2025, 1, 1), annual_rate: 3.65)
+    account = Account.create!(
+      family: families(:dylan_family),
+      name: "Mortgage with partial payment",
+      balance: 100000,
+      currency: "EUR",
+      accountable: loan
+    )
+    account.entries.create!(
+      amount: -100,
+      currency: "EUR",
+      date: Date.new(2025, 1, 28),
+      name: "Partial payment from Checking",
+      entryable: Transaction.new(
+        kind: "funds_movement",
+        extra: {
+          "loan_payment_split" => {
+            "period_number" => 1,
+            "due_date" => "2025-01-28",
+            "variance" => "50"
+          }
+        }
+      )
+    )
+
+    assert_empty account.loan.paid_annuity_period_numbers
+  end
+
   test "rejects duplicate rate period start dates" do
     loan = Loan.new(
       annuity_enabled: true,

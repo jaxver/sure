@@ -146,7 +146,7 @@ class Loan::AmortizationSchedule
     end
 
     def first_payment_on
-      @first_payment_on ||= loan.first_payment_on.presence || loan.started_on.advance(months: 1)
+      @first_payment_on ||= loan.first_annuity_payment_on
     end
 
     def rate_periods

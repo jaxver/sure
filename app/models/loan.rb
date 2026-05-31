@@ -74,7 +74,11 @@ class Loan < ApplicationRecord
     return [] unless account
 
     account.transactions.filter_map do |transaction|
-      transaction.extra&.dig("loan_payment_split", "period_number")&.to_i
+      split = annuity_payment_split_extra(transaction)
+      next unless split_current_for_schedule?(split)
+      next if annuity_split_variance(split).positive?
+
+      split["period_number"].to_i
     end
   end
 
@@ -82,15 +86,25 @@ class Loan < ApplicationRecord
     return {} unless account
 
     account.transactions.each_with_object(Hash.new(BigDecimal("0"))) do |transaction, result|
-      split = transaction.extra&.fetch("loan_payment_split", nil)
-      next unless split
+      split = annuity_payment_split_extra(transaction)
+      next unless split_current_for_schedule?(split)
 
       period_number = split["period_number"].to_i
-      next if period_number <= 0
-
-      extra_principal = split["extra_principal"].to_d
+      extra_principal = split["extra_principal"].to_s.to_d
       result[period_number] += extra_principal if extra_principal.positive?
     end
+  end
+
+  def annuity_due_date_for_period(period_number)
+    period_number = period_number.to_i
+    return nil if period_number <= 0
+    return nil if first_annuity_payment_on.blank?
+
+    first_annuity_payment_on.advance(months: period_number - 1)
+  end
+
+  def first_annuity_payment_on
+    first_payment_on.presence || started_on&.advance(months: 1)
   end
 
   class << self
@@ -124,6 +138,36 @@ class Loan < ApplicationRecord
 
       starts = active_loan_rate_periods.filter_map(&:starts_on)
       errors.add(:loan_rate_periods, "cannot have duplicate start dates") if starts.uniq.size != starts.size
+    end
+
+    def annuity_payment_split_extra(transaction)
+      split = transaction.extra&.fetch("loan_payment_split", nil)
+      split if split.is_a?(Hash)
+    end
+
+    def split_current_for_schedule?(split)
+      return false unless split
+
+      period_number = split["period_number"].to_i
+      expected_due_date = annuity_due_date_for_period(period_number)
+      return false unless expected_due_date
+
+      stored_due_date = parse_annuity_split_due_date(split["due_date"])
+      return false if stored_due_date && stored_due_date != expected_due_date
+
+      true
+    end
+
+    def parse_annuity_split_due_date(value)
+      return nil if value.blank?
+
+      Date.iso8601(value.to_s)
+    rescue ArgumentError
+      nil
+    end
+
+    def annuity_split_variance(split)
+      split["variance"].to_s.to_d
     end
 
 end

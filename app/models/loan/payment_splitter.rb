@@ -32,6 +32,8 @@ class Loan::PaymentSplitter
     return unmatched(amount) unless row
 
     payment_amount = amount.to_d.abs
+    return unmatched(amount) if period_number.blank? && payment_amount < row.scheduled_payment
+
     remaining_payment = payment_amount
     interest = [ remaining_payment, row.interest ].min
     remaining_payment -= interest
